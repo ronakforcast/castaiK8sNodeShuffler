@@ -1,0 +1,145 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cast-ai-management
+  labels:
+    name: cast-ai-management
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cast-ai-credentials
+  namespace: cast-ai-management
+type: Opaque
+data:
+  # Base64 encoded values - replace with your actual values
+  # echo -n "your-api-key-here" | base64
+  api-key: XXXXXXXXXXXXX
+  # echo -n "your-cluster-id-here" | base64
+  cluster-id: YYYYYYYYYYYYYYYYY
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cast-ai-manager
+  namespace: cast-ai-management
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cast-ai-manager
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "patch", "update"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/eviction"]
+  verbs: ["create"]
+- apiGroups: ["apps"]
+  resources: ["daemonsets", "deployments", "replicasets"]
+  verbs: ["get", "list"]
+- apiGroups: ["extensions"]
+  resources: ["daemonsets", "deployments", "replicasets"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cast-ai-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cast-ai-manager
+subjects:
+- kind: ServiceAccount
+  name: cast-ai-manager
+  namespace: cast-ai-management
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cast-ai-node-manager
+  namespace: cast-ai-management
+spec:
+  # Run every day at 2 AM UTC - adjust as needed
+  schedule: "0 2 * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3600  # 1 hour timeout
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: cast-ai-node-manager
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: "eks.amazonaws.com/nodegroup"  # Adjust this key based on your cluster's node labels. on run on non cast ai nodes
+                        operator: Exists
+          serviceAccountName: cast-ai-manager
+          restartPolicy: Never
+          containers:
+          - name: cast-ai-manager
+            image: ronakpatildocker/cast-ai-node-manager:latest
+            imagePullPolicy: Always
+            env:
+            - name: CAST_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cast-ai-credentials
+                  key: api-key
+            - name: CAST_AI_CLUSTER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cast-ai-credentials
+                  key: cluster-id
+            # Batch processing configuration
+            - name: BATCH_SIZE
+              value: "4"                    # Number of nodes per batch
+            - name: BATCH_WAIT_SECONDS
+              value: "60"                   # Wait time between batches (3 minutes)
+            # Node draining configuration
+            - name: DRAIN_TIMEOUT_MINUTES
+              value: "3"                    # Timeout for graceful drain
+            - name: MAX_PARALLEL_DRAINS
+              value: "2"                     # Max parallel drains per batch
+            # Retry configuration
+            - name: MAX_RETRIES
+              value: "3"                     # Max retry attempts for API calls
+            - name: RETRY_DELAY_SECONDS
+              value: "30"                    # Delay between retries
+            # Logging configuration
+            - name: LOG_LEVEL
+              value: "INFO"                  # Loggi
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "500m"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              capabilities:
+                drop:
+                - ALL

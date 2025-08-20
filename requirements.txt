@@ -1,0 +1,19 @@
+# CAST AI Node Manager Dependencies
+
+# Kubernetes client library
+kubernetes==28.1.0
+
+# HTTP requests library
+requests==2.31.0
+
+# Let kubernetes manage urllib3 version automatically
+# urllib3 will be installed as a dependency of kubernetes with compatible version
+
+# Additional utilities (optional but recommended)
+certifi==2023.11.17
+
+# Development dependencies (optional)
+# pytest==7.4.3
+# pytest-cov==4.1.0
+# black==23.11.0
+# flake8==6.1.0
