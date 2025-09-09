@@ -32,7 +32,14 @@ class Config:
     @property
     def k8s_patches(self) -> str:
         return os.getenv('K8S_PATCHES', '')
-    
+    @property
+    def pagerduty_integration_key(self) -> str:
+        return os.getenv('PAGERDUTY_INTEGRATION_KEY', '')
+
+    @property
+    def alerts_enabled(self) -> bool:
+        return os.getenv('ALERTS_ENABLED', 'true').lower() == 'true'
+        
     @classmethod
     def from_environment(cls) -> "Config":
         """Create configuration from environment variables."""

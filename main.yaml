@@ -6,20 +6,31 @@ metadata:
   labels:
     name: cast-ai-management
 
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cast-ai-credentials
-  namespace: cast-ai-management
-type: Opaque
-data:
-  # Base64 encoded values - replace with your actual values
-  # echo -n "your-api-key-here" | base64
-  api-key: Z3B0LTUtcmFuZG9tLWJhc2U2NC12YWx1ZS0xMjM0NTY=
-  # echo -n "your-cluster-id-here" | base64
-  cluster-id: Z3B0LTUtcmFuZG9tLWJhc2U2NC12YWx1ZS0xMjM0NTY=
+# ---
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: cast-ai-credentials
+#   namespace: cast-ai-management
+# type: Opaque
+# data:
+#   # Base64 encoded values - replace with your actual values
+#   # echo -n "your-api-key-here" | base64
+#   api-key: Z3B0LTUtcmFuZG9tLWJhc2U2NC12YWx1ZS0xMjM0NTY=
+#   # echo -n "your-cluster-id-here" | base64
+#   cluster-id: Z3B0LTUtcmFuZG9tLWJhc2U2NC12YWx1ZS0xMjM0NTY=
 
+# ---
+# # Secret for PagerDuty credentials
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: pagerduty-credentials
+#   namespace: cast-ai-management
+# type: Opaque
+# data:
+#   # Base64 encoded PagerDuty integration key
+#   integration-key: <BASE64_ENCODED_PAGERDUTY_INTEGRATION_KEY>
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -176,9 +187,15 @@ spec:
                 configMapKeyRef:
                   name: k8s-patches-config
                   key: patches.json
-            # Logging configuration
             - name: LOG_LEVEL
-              value: "INFO"                  # Loggi
+              value: "INFO"    
+            # - name: PAGERDUTY_INTEGRATION_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: pagerduty-credentials
+            #       key: integration-key
+            # - name: ALERTS_ENABLED
+            #   value: "true"               # Enable or disable PagerDuty alerts           
             resources:
               requests:
                 memory: "128Mi"

@@ -24,6 +24,7 @@ COPY config.py .
 COPY logger_utils.py .
 COPY cast_utils.py .
 COPY node_utils.py .
+COPY alerts_utils.py .
 COPY batch_utils.py .
 COPY kubernetes_utils.py .
 COPY main.py .
