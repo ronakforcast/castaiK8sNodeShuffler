@@ -29,6 +29,10 @@ class Config:
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
+    @property
+    def k8s_patches(self) -> str:
+        return os.getenv('K8S_PATCHES', '')
+    
     @classmethod
     def from_environment(cls) -> "Config":
         """Create configuration from environment variables."""

@@ -1,40 +1,16 @@
-# FROM python:3.11-slim
-
-# # Set working directory
-# WORKDIR /app
-
-# # Install system dependencies
-# RUN apt-get update && apt-get install -y \
-#     curl \
-#     && rm -rf /var/lib/apt/lists/*
-
-# # Copy requirements first for better Docker layer caching
-# COPY requirements.txt .
-
-# # Install Python dependencies
-# RUN pip install --no-cache-dir -r requirements.txt
-
-# # Copy the application
-# COPY cast_ai_node_manager.py .
-
-# # Create non-root user for security
-# RUN groupadd -r appuser && useradd -r -g appuser appuser
-# RUN chown -R appuser:appuser /app
-# USER appuser
-
-# # Set the entrypoint
-# ENTRYPOINT ["python", "cast_ai_node_manager.py"]
-
-
 # CAST AI Node Manager Dockerfile
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies and kubectl
 RUN apt-get update && apt-get install -y \
     curl \
+    ca-certificates \
+    && curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x kubectl \
+    && mv kubectl /usr/local/bin/ \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -49,6 +25,7 @@ COPY logger_utils.py .
 COPY cast_utils.py .
 COPY node_utils.py .
 COPY batch_utils.py .
+COPY kubernetes_utils.py .
 COPY main.py .
 
 # Create non-root user
