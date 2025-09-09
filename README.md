@@ -1,4 +1,4 @@
-# castaiK8sNodeShuffler
+# castaiK8sNodeShuffler (readme is outdated - will be updated  by next week , WIP)
 
 A tool for removing CAST AI nodes from Kubernetes clusters while respecting PodDisruptionBudgets.
 
