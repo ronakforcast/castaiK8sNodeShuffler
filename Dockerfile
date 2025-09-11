@@ -27,6 +27,7 @@ COPY node_utils.py .
 COPY alerts_utils.py .
 COPY batch_utils.py .
 COPY kubernetes_utils.py .
+COPY rebalancing_utils.py .
 COPY main.py .
 
 # Create non-root user

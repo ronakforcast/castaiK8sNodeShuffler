@@ -1,4 +1,5 @@
 ---
+# Namespace for Cast AI management resources
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -6,7 +7,9 @@ metadata:
   labels:
     name: cast-ai-management
 
-# ---
+---
+# # Secret containing Cast AI API credentials
+# # Note: Replace the base64 encoded values with your actual Cast AI credentials
 # apiVersion: v1
 # kind: Secret
 # metadata:
@@ -14,14 +17,15 @@ metadata:
 #   namespace: cast-ai-management
 # type: Opaque
 # data:
-#   # Base64 encoded values - replace with your actual values
-#   # echo -n "your-api-key-here" | base64
+#   # Base64 encoded Cast AI API key
+#   # Generate with: echo -n "your-api-key-here" | base64
 #   api-key: Z3B0LTUtcmFuZG9tLWJhc2U2NC12YWx1ZS0xMjM0NTY=
-#   # echo -n "your-cluster-id-here" | base64
+#   # Base64 encoded Cast AI cluster ID
+#   # Generate with: echo -n "your-cluster-id-here" | base64
 #   cluster-id: Z3B0LTUtcmFuZG9tLWJhc2U2NC12YWx1ZS0xMjM0NTY=
 
 # ---
-# # Secret for PagerDuty credentials
+# # Optional: Secret for PagerDuty integration (uncomment to enable alerts)
 # apiVersion: v1
 # kind: Secret
 # metadata:
@@ -29,9 +33,12 @@ metadata:
 #   namespace: cast-ai-management
 # type: Opaque
 # data:
-#   # Base64 encoded PagerDuty integration key
+#   # Base64 encoded PagerDuty integration key for incident management
+#   # Generate with: echo -n "your-pagerduty-key" | base64
 #   integration-key: <BASE64_ENCODED_PAGERDUTY_INTEGRATION_KEY>
+
 ---
+# Service account for Cast AI node manager operations
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -39,37 +46,43 @@ metadata:
   namespace: cast-ai-management
 
 ---
+# Cluster role defining permissions needed for node management operations
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: cast-ai-manager
 rules:
-- apiGroups: [""]
-  resources: ["nodes"]
-  verbs: ["get", "list", "patch", "update"]
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list", "delete"]
-- apiGroups: [""]
-  resources: ["pods/eviction"]
-  verbs: ["create"]
-- apiGroups: ["apps"]
-  resources: ["daemonsets", "deployments", "replicasets"]
-  verbs: ["get", "list"]
-- apiGroups: ["extensions"]
-  resources: ["daemonsets", "deployments", "replicasets"]
-  verbs: ["get", "list"]
-- apiGroups: [""]
-  resources: ["pods/eviction"]  # For PDB-respecting eviction
-  verbs: ["create"]
-- apiGroups: ["policy"]
-  resources: ["poddisruptionbudgets"]  # For PDB discovery
-  verbs: ["get", "list"]
-- apiGroups: ["apps"]
-  resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
-  verbs: ["get", "list", "patch", "update"]
+  # Node management permissions
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "patch", "update"]
+  # Pod management for workload migration
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  # Pod eviction for graceful draining
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  # Application discovery and management
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "deployments", "replicasets"]
+    verbs: ["get", "list"]
+  # Legacy extensions API support
+  - apiGroups: ["extensions"]
+    resources: ["daemonsets", "deployments", "replicasets"]
+    verbs: ["get", "list"]
+  # Pod Disruption Budget (PDB) support for safe eviction
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list"]
+  # Application scaling and updates
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "patch", "update"]
 
 ---
+# Bind the cluster role to the service account
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -79,11 +92,12 @@ roleRef:
   kind: ClusterRole
   name: cast-ai-manager
 subjects:
-- kind: ServiceAccount
-  name: cast-ai-manager
-  namespace: cast-ai-management
+  - kind: ServiceAccount
+    name: cast-ai-manager
+    namespace: cast-ai-management
 
 ---
+# ConfigMap containing Kubernetes resource patches to apply during migration
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -120,94 +134,245 @@ data:
         }
       }
     ]
+
 ---
+# CronJob for migrating nodes from non-Cast AI to Cast AI management
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: cast-ai-node-manager
+  name: cast-ai-node-manager-noncast-to-cast
   namespace: cast-ai-management
 spec:
-  # Run every day at 2 AM UTC - adjust as needed
+  # Schedule: Daily at 2 AM UTC (adjust based on your maintenance window)
   schedule: "0 2 * * *"
   timeZone: "UTC"
+  # Prevent multiple instances from running simultaneously
   concurrencyPolicy: Forbid
+  # Job history retention
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
+  # Maximum delay before considering job as failed to start
   startingDeadlineSeconds: 300
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 3600  # 1 hour timeout
+      # Job timeout - 1 hour maximum runtime
+      activeDeadlineSeconds: 3600
+      # Maximum retry attempts for failed jobs
       backoffLimit: 2
       template:
         metadata:
           labels:
             app: cast-ai-node-manager
+          annotations:
+            # Prevent this pod from being evicted by cluster autoscaler
+            cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
         spec:
+          # Node affinity to run on non-Cast AI nodes only
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
                 nodeSelectorTerms:
                   - matchExpressions:
-                      - key: "cloud.google.com/gke-nodepool"  # Adjust this key based on your cluster's node labels. on run on non cast ai nodes
+                      # Adjust this key based on your cluster's node labels
+                      - key: "cloud.google.com/gke-nodepool"
                         operator: Exists
           serviceAccountName: cast-ai-manager
           restartPolicy: Never
           containers:
-          - name: cast-ai-manager
-            image: ronakpatildocker/cast-ai-node-manager:latest
-            imagePullPolicy: Always
-            env:
-            - name: CAST_AI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: cast-ai-credentials
-                  key: api-key
-            - name: CAST_AI_CLUSTER_ID
-              valueFrom:
-                secretKeyRef:
-                  name: cast-ai-credentials
-                  key: cluster-id
-            # Batch processing configuration
-            - name: BATCH_SIZE
-              value: "2"                    # Number of nodes per batch
-            - name: BATCH_WAIT_SECONDS
-              value: "60"                   # Wait time between batches (3 minutes)
-            # Node draining configuration
-            - name: DRAIN_TIMEOUT_MINUTES
-              value: "3"                    # Timeout for graceful drain
-            - name: MAX_PARALLEL_DRAINS
-              value: "2"                     # Max parallel drains per batch
-            # Retry configuration
-            - name: MAX_RETRIES
-              value: "3"                     # Max retry attempts for API calls
-            - name: RETRY_DELAY_SECONDS
-              value: "30"                    # Delay between retries
-            - name: K8S_PATCHES
-              valueFrom:
-                configMapKeyRef:
-                  name: k8s-patches-config
-                  key: patches.json
-            - name: LOG_LEVEL
-              value: "INFO"    
-            # - name: PAGERDUTY_INTEGRATION_KEY
-            #   valueFrom:
-            #     secretKeyRef:
-            #       name: pagerduty-credentials
-            #       key: integration-key
-            # - name: ALERTS_ENABLED
-            #   value: "true"               # Enable or disable PagerDuty alerts           
-            resources:
-              requests:
-                memory: "128Mi"
-                cpu: "100m"
-              limits:
-                memory: "256Mi"
-                cpu: "500m"
-            securityContext:
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              runAsNonRoot: true
-              runAsUser: 1000
-              capabilities:
-                drop:
-                - ALL
+            - name: cast-ai-manager
+              image: ronakpatildocker/cast-ai-node-manager:latest
+              imagePullPolicy: Always
+              env:
+                # Cast AI API credentials
+                - name: CAST_AI_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: cast-ai-credentials
+                      key: api-key
+                - name: CAST_AI_CLUSTER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: cast-ai-credentials
+                      key: cluster-id
+                
+                # Job configuration - defines the migration direction
+                - name: JOB_TYPE
+                  value: "NONCAST_TO_CAST"   # Options: "CAST_TO_NONCAST" or "NONCAST_TO_CAST"
+                
+                # Batch processing configuration for controlled migration
+                - name: BATCH_SIZE
+                  value: "2"                    # Number of nodes to process simultaneously
+                - name: BATCH_WAIT_SECONDS
+                  value: "60"                   # Wait time between batches to ensure stability
+                
+                # Node draining configuration for graceful workload migration
+                - name: DRAIN_TIMEOUT_MINUTES
+                  value: "3"                    # Maximum time to wait for graceful pod eviction
+                - name: MAX_PARALLEL_DRAINS
+                  value: "2"                    # Maximum number of nodes to drain simultaneously
+                
+                # Retry configuration for API resilience
+                - name: MAX_RETRIES
+                  value: "3"                    # Maximum retry attempts for failed API calls
+                - name: RETRY_DELAY_SECONDS
+                  value: "30"                   # Delay between retry attempts
+                
+                # Kubernetes resource patches to apply during migration
+                - name: K8S_PATCHES
+                  valueFrom:
+                    configMapKeyRef:
+                      name: k8s-patches-config
+                      key: patches.json
+                
+                # Logging configuration
+                - name: LOG_LEVEL
+                  value: "INFO"                 # Log verbosity: DEBUG, INFO, WARN, ERROR
+                
+                # Optional: PagerDuty integration (uncomment to enable)
+                # - name: PAGERDUTY_INTEGRATION_KEY
+                #   valueFrom:
+                #     secretKeyRef:
+                #       name: pagerduty-credentials
+                #       key: integration-key
+                # - name: ALERTS_ENABLED
+                #   value: "true"               # Enable or disable PagerDuty alerts for failures
+              
+              # Resource limits and requests
+              resources:
+                requests:
+                  memory: "128Mi"               # Minimum memory allocation
+                  cpu: "100m"                   # Minimum CPU allocation (0.1 CPU cores)
+                limits:
+                  memory: "256Mi"               # Maximum memory allocation
+                  cpu: "500m"                   # Maximum CPU allocation (0.5 CPU cores)
+              
+              # Security context for container hardening
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop:
+                    - ALL
+
+---
+# CronJob for migrating nodes from Cast AI to non-Cast AI management
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cast-ai-node-manager-cast-to-noncast
+  namespace: cast-ai-management
+spec:
+  # Schedule: Daily at 2 AM UTC (adjust based on your maintenance window)
+  schedule: "0 2 * * *"
+  timeZone: "UTC"
+  # Prevent multiple instances from running simultaneously
+  concurrencyPolicy: Forbid
+  # Job history retention
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Maximum delay before considering job as failed to start
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      # Job timeout - 1 hour maximum runtime
+      activeDeadlineSeconds: 3600
+      # Maximum retry attempts for failed jobs
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: cast-ai-node-manager
+          annotations:
+            # Prevent this pod from being evicted by cluster autoscaler
+            cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+        spec:
+          # Node affinity to run on non-Cast AI nodes only
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      # Adjust this key based on your cluster's node labels
+                      - key: "cloud.google.com/gke-nodepool"
+                        operator: Exists
+          serviceAccountName: cast-ai-manager
+          restartPolicy: Never
+          containers:
+            - name: cast-ai-manager
+              image: ronakpatildocker/cast-ai-node-manager:latest
+              imagePullPolicy: Always
+              env:
+                # Cast AI API credentials
+                - name: CAST_AI_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: cast-ai-credentials
+                      key: api-key
+                - name: CAST_AI_CLUSTER_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: cast-ai-credentials
+                      key: cluster-id
+                
+                # Job configuration - defines the migration direction
+                - name: JOB_TYPE
+                  value: "CAST_TO_NONCAST"      # Options: "CAST_TO_NONCAST" or "NONCAST_TO_CAST"
+                
+                # Batch processing configuration for controlled migration
+                - name: BATCH_SIZE
+                  value: "2"                    # Number of nodes to process simultaneously
+                - name: BATCH_WAIT_SECONDS
+                  value: "60"                   # Wait time between batches to ensure stability
+                
+                # Node draining configuration for graceful workload migration
+                - name: DRAIN_TIMEOUT_MINUTES
+                  value: "3"                    # Maximum time to wait for graceful pod eviction
+                - name: MAX_PARALLEL_DRAINS
+                  value: "2"                    # Maximum number of nodes to drain simultaneously
+                
+                # Retry configuration for API resilience
+                - name: MAX_RETRIES
+                  value: "3"                    # Maximum retry attempts for failed API calls
+                - name: RETRY_DELAY_SECONDS
+                  value: "30"                   # Delay between retry attempts
+                
+                # Kubernetes resource patches to apply during migration
+                - name: K8S_PATCHES
+                  valueFrom:
+                    configMapKeyRef:
+                      name: k8s-patches-config
+                      key: patches.json
+                
+                # Logging configuration
+                - name: LOG_LEVEL
+                  value: "INFO"                 # Log verbosity: DEBUG, INFO, WARN, ERROR
+                
+                # Optional: PagerDuty integration (uncomment to enable)
+                # - name: PAGERDUTY_INTEGRATION_KEY
+                #   valueFrom:
+                #     secretKeyRef:
+                #       name: pagerduty-credentials
+                #       key: integration-key
+                # - name: ALERTS_ENABLED
+                #   value: "true"               # Enable or disable PagerDuty alerts for failures
+              
+              # Resource limits and requests
+              resources:
+                requests:
+                  memory: "128Mi"               # Minimum memory allocation
+                  cpu: "100m"                   # Minimum CPU allocation (0.1 CPU cores)
+                limits:
+                  memory: "256Mi"               # Maximum memory allocation
+                  cpu: "500m"                   # Maximum CPU allocation (0.5 CPU cores)
+              
+              # Security context for container hardening
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop:
+                    - ALL

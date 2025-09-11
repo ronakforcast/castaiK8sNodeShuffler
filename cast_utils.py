@@ -66,6 +66,41 @@ class CastAIClient:
             self.logger.error("Failed to disable CAST AI policies", error=str(e))
             raise
     
+    
+    @log_operation("enable_cast_policies")
+    @retry_with_logging(max_retries=3, delay_seconds=30)
+    def enable_cast_policies(self) -> bool:
+        """
+        Enable CAST AI policies for the cluster.
+        
+        Returns:
+            bool: True if policies were enabled successfully, False otherwise.
+        """
+        policies_url = f"{self.base_url}/clusters/{self.config.cast_ai_cluster_id}/policies"
+        
+        try:
+            # Fetch current policies
+            self.logger.info("Fetching current CAST AI policies")
+            response = self.session.get(policies_url, timeout=30)
+            response.raise_for_status()
+            
+            policies_json = response.json()
+            self.logger.debug("Current policies retrieved", policies=policies_json)
+            
+            # Enable policies
+            policies_json['enabled'] = True
+            
+            self.logger.info("Enabling CAST AI policies")
+            response = self.session.put(policies_url, json=policies_json, timeout=30)
+            response.raise_for_status()
+            
+            self.logger.info("CAST AI policies enabled successfully")
+            return True
+            
+        except requests.RequestException as e:
+            self.logger.error("Failed to enable CAST AI policies", error=str(e))
+            raise
+    
     @log_operation("get_cast_nodes")
     @retry_with_logging(max_retries=3, delay_seconds=10)
     def get_cast_nodes(self) -> List[CastNode]:

@@ -39,6 +39,28 @@ class Config:
     @property
     def alerts_enabled(self) -> bool:
         return os.getenv('ALERTS_ENABLED', 'true').lower() == 'true'
+    
+    @property
+    def job_type(self) -> str:
+        return os.getenv('JOB_TYPE', 'CAST_TO_NONCAST')
+    
+    @property
+    def rebalancing_zone(self) -> Optional[str]:
+        zone = os.getenv('REBALANCING_ZONE', '')
+        return zone if zone else None
+
+    @property
+    def rebalancing_min_nodes(self) -> int:
+        return int(os.getenv('REBALANCING_MIN_NODES', '1'))
+    
+    @property
+    def cast_cluster_id(self) -> str:
+        return os.getenv('CAST_AI_CLUSTER_ID', '')
+
+    @property
+    def cast_api_key(self) -> str:
+        return os.getenv('CAST_AI_API_KEY', '')
+
         
     @classmethod
     def from_environment(cls) -> "Config":
