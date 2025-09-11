@@ -101,7 +101,7 @@ subjects:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: k8s-patches-config
+  name: k8s-patches-config-cast-to-noncast
   namespace: cast-ai-management
 data:
   patches.json: |
@@ -136,6 +136,46 @@ data:
     ]
 
 ---
+# ConfigMap containing Kubernetes resource patches to apply during migration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-patches-config-noncast-to-cast
+  namespace: cast-ai-management
+data:
+  patches.json: |
+    [
+      {
+        "kind": "Deployment",
+        "name": "nginx-deployment",
+        "namespace": "default",
+        "patch": {
+          "metadata": {
+            "annotations": {
+              "argocd.argoproj.io/sync-options": "Skip=true"
+            }
+          },
+          "spec": {
+            "replicas": 0
+          }
+        }
+      },
+      {
+        "kind": "Service",
+        "name": "app1-service",
+        "namespace": "default",
+        "patch": {
+          "metadata": {
+            "labels": {
+              "maintenance": "true"
+            }
+          }
+        }
+      }
+    ]
+
+---
+
 # CronJob for migrating nodes from non-Cast AI to Cast AI management
 apiVersion: batch/v1
 kind: CronJob
@@ -221,7 +261,7 @@ spec:
                 - name: K8S_PATCHES
                   valueFrom:
                     configMapKeyRef:
-                      name: k8s-patches-config
+                      name: k8s-patches-config-noncast-to-cast
                       key: patches.json
                 
                 # Logging configuration
@@ -342,7 +382,7 @@ spec:
                 - name: K8S_PATCHES
                   valueFrom:
                     configMapKeyRef:
-                      name: k8s-patches-config
+                      name: k8s-patches-config-cast-to-noncast
                       key: patches.json
                 
                 # Logging configuration
